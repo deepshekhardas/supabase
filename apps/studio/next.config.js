@@ -23,7 +23,10 @@ function getAssetPrefix() {
       ? 'https://frontend-assets.supabase.green'
       : 'https://frontend-assets.supabase.com'
 
-  return `${SUPABASE_ASSETS_URL}/${process.env.SITE_NAME}/${process.env.VERCEL_GIT_COMMIT_SHA.substring(0, 12)}`
+  const commitSha = process.env.VERCEL_GIT_COMMIT_SHA
+  if (!commitSha) return undefined
+
+  return `${SUPABASE_ASSETS_URL}/${process.env.SITE_NAME}/${commitSha.substring(0, 12)}`
 }
 
 /**
@@ -33,6 +36,9 @@ const nextConfig = {
   basePath: process.env.NEXT_PUBLIC_BASE_PATH,
   assetPrefix: getAssetPrefix(),
   output: 'standalone',
+  experimental: {
+    clientRouterFilter: false,
+  },
   async rewrites() {
     return [
       {
@@ -88,11 +94,16 @@ const nextConfig = {
               destination: '/sign-in',
               permanent: false,
             },
+            {
+              source: '/project/:ref/building',
+              destination: '/project/:ref',
+              permanent: false,
+            },
           ]
         : [
             {
               source: '/',
-              destination: '/project/default',
+              destination: '/welcome',
               permanent: false,
             },
             {
@@ -118,6 +129,11 @@ const nextConfig = {
             {
               source: '/log-in',
               destination: '/project/default',
+              permanent: false,
+            },
+            {
+              source: '/project/:ref/building',
+              destination: '/project/:ref',
               permanent: false,
             },
           ]),

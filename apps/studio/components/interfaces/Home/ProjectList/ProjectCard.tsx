@@ -114,7 +114,7 @@ export const ProjectCard = ({
                 </div>
                 <p className="text-sm text-foreground-lighter">{desc}</p>
               </div>
-              <div className="flex items-center gap-x-1.5 relative overflow-hidden">
+              <div className="flex items-center gap-x-1.5 relative overflow-hidden py-px">
                 <ProjectCardStatus
                   projectStatus={projectStatus}
                   resourceWarnings={resourceWarnings}
@@ -126,6 +126,8 @@ export const ProjectCard = ({
                     projectRef={project.ref}
                     cloudProvider={project.cloud_provider}
                     computeSize={getComputeSize(project)}
+                    resourceWarnings={resourceWarnings}
+                    badgeClassName="text-[10px] leading-none tracking-[0.07em]"
                   />
                 )}
                 {isVercelIntegrated && (

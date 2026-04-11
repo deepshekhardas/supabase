@@ -143,8 +143,8 @@ export function ComputeSizeField({ form, disabled }: ComputeSizeFieldProps) {
                   type="default"
                   className="mt-3 border-violet-900 bg-violet-200 [&_h5]:text-violet-1100"
                   visible={showUpgradeBadge && form.watch('computeSize') === 'ci_nano'}
-                  title={'Upgrade to Micro Compute'}
-                  description="This Project is already paying for Micro Compute. You can upgrade to Micro Compute at any time when convenient."
+                  title={'Free upgrade to Micro available'}
+                  description="Your Pro plan includes a free upgrade from Nano to Micro — double the memory at no extra cost. Select Micro above to apply it."
                 />
               </>
             }

@@ -12,7 +12,6 @@ import {
   Badge,
   Button,
   cn,
-  CodeBlock,
   ContextMenu_Shadcn_,
   ContextMenuContent_Shadcn_,
   ContextMenuItem_Shadcn_,
@@ -41,6 +40,7 @@ import {
   TooltipTrigger,
 } from 'ui'
 import { TimestampInfo } from 'ui-patterns'
+import { CodeBlock } from 'ui-patterns/CodeBlock'
 
 const getNextRun = (schedule: string, lastRun?: string) => {
   // cron-parser can only deal with the traditional cron syntax but technically users can also
@@ -216,7 +216,8 @@ export const CronJobTableCell = ({
           <DialogSectionSeparator />
           <DialogSection>
             <p className="text-sm">
-              Are you sure you want to {active ? 'disable' : 'enable'} the cron job "{jobname}"?{' '}
+              Are you sure you want to {active ? 'disable' : 'enable'} the cron job "{jobname}
+              "?{' '}
             </p>
           </DialogSection>
           <DialogFooter>
