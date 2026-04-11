@@ -26,6 +26,8 @@ import {
   TableRow,
 } from 'ui'
 
+import { ErrorMatcher } from '../../ErrorHandling/ErrorMatcher'
+import { TroubleshootingAccordion } from '../../ErrorHandling/TroubleshootingAccordion'
 import { LoadingCardView, LoadingTableView, NoProjectsState } from './EmptyStates'
 import { LoadMoreRows } from './LoadMoreRow'
 import { ProjectCard } from './ProjectCard'
@@ -91,6 +93,7 @@ export const ProjectList = ({ organization: organization_, rewriteHref }: Projec
     error: permissionsError,
   } = usePermissionsQuery()
   const { data: resourceWarnings } = useResourceWarningsQuery({ slug })
+  console.log('raw warnings', resourceWarnings, 'looking for', slug)
 
   // Move all hooks to the top to comply with Rules of Hooks
   const { data: integrations } = useOrgIntegrationsQuery({ orgSlug: organization?.slug })

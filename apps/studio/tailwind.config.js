@@ -80,6 +80,9 @@ module.exports = config({
 
       animation: {
         shimmer: 'shimmer 2s infinite linear',
+        'badge-shimmer': 'badge-shimmer 2.4s ease-in-out infinite',
+        'badge-pulse': 'badge-pulse 2.4s ease-in-out infinite',
+        'chevron-up': 'chevron-up 1.2s ease-in-out infinite',
         sway: 'sway 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
       keyframes: {
@@ -90,6 +93,20 @@ module.exports = config({
           '100%': {
             'background-position': '1000px 0',
           },
+        },
+        'badge-shimmer': {
+          '0%': { transform: 'translateX(-200%)', opacity: '0' },
+          '20%': { opacity: '1' },
+          '80%': { opacity: '1' },
+          '100%': { transform: 'translateX(200%)', opacity: '0' },
+        },
+        'badge-pulse': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.8' },
+        },
+        'chevron-up': {
+          '0%, 100%': { opacity: '0.2' },
+          '50%': { opacity: '1' },
         },
         sway: {
           '0%, 100%': {
