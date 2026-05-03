@@ -1,12 +1,13 @@
 {
   "rules": {
-    "react-hooks/exhaustive-deps": 205,
+    "react-hooks/exhaustive-deps": 179,
     "import/no-anonymous-default-export": 57,
-    "@tanstack/query/exhaustive-deps": 13,
-    "@typescript-eslint/no-explicit-any": 1205,
-    "no-restricted-imports": 59,
-    "no-restricted-exports": 282,
-    "react/no-unstable-nested-components": 68
+    "@tanstack/query/exhaustive-deps": 12,
+    "@typescript-eslint/no-explicit-any": 1042,
+    "no-restricted-imports": 0,
+    "no-restricted-exports": 255,
+    "react/no-unstable-nested-components": 51,
+    "studio/require-safe-sql-fragment": 158
   },
   "ruleFiles": {
     "react-hooks/exhaustive-deps": {
