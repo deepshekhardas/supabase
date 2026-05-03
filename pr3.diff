@@ -1,0 +1,948 @@
+diff --git a/apps/studio/components/interfaces/Organization/BillingSettings/CreditBalance.tsx b/apps/studio/components/interfaces/Organization/BillingSettings/CreditBalance.tsx
+index 72a964c19884b..155aa0288183c 100644
+--- a/apps/studio/components/interfaces/Organization/BillingSettings/CreditBalance.tsx
++++ b/apps/studio/components/interfaces/Organization/BillingSettings/CreditBalance.tsx
+@@ -1,9 +1,9 @@
+ import { PermissionAction } from '@supabase/shared-types/out/constants'
+ import { useParams } from 'common'
++import { useInView } from 'react-intersection-observer'
+ 
+ import { CreditCodeRedemption } from './CreditCodeRedemption'
+ import { CreditTopUp } from './CreditTopUp'
+-import { getTotalCreditBalanceCents } from './helpers'
+ import {
+   ScaffoldSection,
+   ScaffoldSectionContent,
+@@ -13,7 +13,7 @@ import AlertError from '@/components/ui/AlertError'
+ import { FormPanel } from '@/components/ui/Forms/FormPanel'
+ import { FormSection, FormSectionContent } from '@/components/ui/Forms/FormSection'
+ import NoPermission from '@/components/ui/NoPermission'
+-import { useOrgSubscriptionQuery } from '@/data/subscriptions/org-subscription-query'
++import { useOrgBalanceQuery } from '@/data/subscriptions/org-balance-query'
+ import { useAsyncCheckPermissions } from '@/hooks/misc/useCheckPermissions'
+ 
+ const CreditBalance = () => {
+@@ -23,26 +23,25 @@ const CreditBalance = () => {
+     PermissionAction.BILLING_READ,
+     'stripe.subscriptions'
+   )
++  const { ref, inView } = useInView({ triggerOnce: true })
+ 
++  // Endpoint is expensive, so we only load it if it's in view
+   const {
+-    data: subscription,
+-    error,
+-    isPending: isLoading,
+-    isError,
+-    isSuccess,
+-  } = useOrgSubscriptionQuery({ orgSlug: slug }, { enabled: canReadSubscriptions })
++    data: balanceData,
++    error: balanceError,
++    isPending: isBalanceLoading,
++    isError: isBalanceError,
++    isSuccess: isBalanceSuccess,
++  } = useOrgBalanceQuery({ orgSlug: slug }, { enabled: canReadSubscriptions && inView })
+ 
+-  const combinedCreditBalanceCents = getTotalCreditBalanceCents({
+-    customerBalance: subscription?.customer_balance,
+-    prepaidCreditsBalance: subscription?.prepaid_credits_balance,
+-  })
++  const combinedCreditBalanceCents = balanceData?.total_balance_cents ?? 0
+   const combinedCreditBalance = combinedCreditBalanceCents / 100
+   const hasCredits = combinedCreditBalanceCents > 0
+   const hasDebt = combinedCreditBalanceCents < 0
+   const balance = Math.abs(combinedCreditBalance).toFixed(2)
+ 
+   return (
+-    <ScaffoldSection>
++    <ScaffoldSection ref={ref}>
+       <ScaffoldSectionDetail>
+         <div className="sticky space-y-2 top-12 pr-3">
+           <div className="flex items-center space-x-2">
+@@ -63,7 +62,7 @@ const CreditBalance = () => {
+         ) : (
+           <FormPanel
+             footer={
+-              subscription?.billing_via_partner ? undefined : (
++              balanceData?.billing_via_partner ? undefined : (
+                 <div className="flex justify-end items-center py-4 px-8 gap-x-2">
+                   <CreditCodeRedemption slug={slug} />
+                   <CreditTopUp slug={slug} />
+@@ -72,15 +71,15 @@ const CreditBalance = () => {
+             }
+           >
+             <FormSection>
+-              <FormSectionContent fullWidth loading={isLoading}>
+-                {isError && (
++              <FormSectionContent fullWidth loading={isBalanceLoading}>
++                {isBalanceError && (
+                   <AlertError
+                     subject="Failed to retrieve organization customer profile"
+-                    error={error}
++                    error={balanceError}
+                   />
+                 )}
+ 
+-                {isSuccess && (
++                {isBalanceSuccess && (
+                   <div className="flex w-full justify-between items-center">
+                     <span>Balance</span>
+                     <div className="flex items-center space-x-1">
+diff --git a/apps/studio/components/interfaces/Organization/BillingSettings/CreditCodeRedemption.tsx b/apps/studio/components/interfaces/Organization/BillingSettings/CreditCodeRedemption.tsx
+index bdd49ee2b6609..3c6f94f09f641 100644
+--- a/apps/studio/components/interfaces/Organization/BillingSettings/CreditCodeRedemption.tsx
++++ b/apps/studio/components/interfaces/Organization/BillingSettings/CreditCodeRedemption.tsx
+@@ -26,12 +26,11 @@ import { Admonition, ShimmeringLoader, TimestampInfo } from 'ui-patterns'
+ import { FormItemLayout } from 'ui-patterns/form/FormItemLayout/FormItemLayout'
+ import { z } from 'zod'
+ 
+-import { getTotalCreditBalanceCents } from './helpers'
+ import { ButtonTooltip } from '@/components/ui/ButtonTooltip'
+ import { UpgradePlanButton } from '@/components/ui/UpgradePlanButton'
+ import { useOrganizationCreditCodeRedemptionMutation } from '@/data/organizations/organization-credit-code-redemption-mutation'
+-import { useOrganizationCustomerProfileQuery } from '@/data/organizations/organization-customer-profile-query'
+ import { useOrganizationQuery } from '@/data/organizations/organization-query'
++import { useOrgBalanceQuery } from '@/data/subscriptions/org-balance-query'
+ import { useAsyncCheckPermissions } from '@/hooks/misc/useCheckPermissions'
+ import { useLatest } from '@/hooks/misc/useLatest'
+ 
+@@ -58,14 +57,11 @@ export const CreditCodeRedemption = ({
+   )
+ 
+   const { data: org, isLoading: isOrgLoading } = useOrganizationQuery({ slug })
+-  const { data: customerProfile, isLoading: isCustomerProfileLoading } =
+-    useOrganizationCustomerProfileQuery({ slug })
+-  const combinedCreditBalanceCents = customerProfile
+-    ? getTotalCreditBalanceCents({
+-        customerBalance: customerProfile.balance,
+-        prepaidCreditsBalance: customerProfile.prepaid_credits_balance,
+-      })
+-    : undefined
++  const { data: orgBalance, isLoading: isOrgBalanceLoading } = useOrgBalanceQuery(
++    { orgSlug: slug },
++    { enabled: modalVisible }
++  )
++  const combinedCreditBalanceCents = orgBalance?.total_balance_cents
+ 
+   const { can: canRedeemCode, isSuccess: isPermissionsLoaded } = useAsyncCheckPermissions(
+     PermissionAction.BILLING_WRITE,
+@@ -77,7 +73,7 @@ export const CreditCodeRedemption = ({
+   const captchaRef = useRef<HCaptcha>(null)
+   const captchaTokenRef = useRef<string | null>(null)
+   const codeRedemptionDisabled =
+-    !canRedeemCode || !isPermissionsLoaded || isOrgLoading || isCustomerProfileLoading
++    !canRedeemCode || !isPermissionsLoaded || isOrgLoading || isOrgBalanceLoading
+ 
+   const form = useForm<CreditCodeRedemptionForm>({
+     resolver: zodResolver(FormSchema),
+@@ -259,7 +255,7 @@ export const CreditCodeRedemption = ({
+             <DialogSectionSeparator />
+ 
+             <Form {...form}>
+-              {isOrgLoading || isCustomerProfileLoading || !isPermissionsLoaded ? (
++              {isOrgLoading || isOrgBalanceLoading || !isPermissionsLoaded ? (
+                 <div className="p-6 space-y-4">
+                   <ShimmeringLoader />
+                   <div className="flex space-x-4">
+diff --git a/apps/studio/components/interfaces/Organization/BillingSettings/CreditTopUp.tsx b/apps/studio/components/interfaces/Organization/BillingSettings/CreditTopUp.tsx
+index c996dacba22a9..58900583dbb24 100644
+--- a/apps/studio/components/interfaces/Organization/BillingSettings/CreditTopUp.tsx
++++ b/apps/studio/components/interfaces/Organization/BillingSettings/CreditTopUp.tsx
+@@ -247,6 +247,7 @@ export const CreditTopUp = ({ slug }: { slug: string | undefined }) => {
+   const onSuccessfulPayment = async () => {
+     onTopUpDialogVisibilityChange(false)
+     await queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgSubscription(slug) })
++    await queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgBalance(slug) })
+     toast.success(
+       'Successfully topped up balance. It may take a minute to reflect in your account.'
+     )
+diff --git a/apps/studio/data/organizations/organization-credit-code-redemption-mutation.ts b/apps/studio/data/organizations/organization-credit-code-redemption-mutation.ts
+index a6d9abf6d131f..7fdbad8a2470c 100644
+--- a/apps/studio/data/organizations/organization-credit-code-redemption-mutation.ts
++++ b/apps/studio/data/organizations/organization-credit-code-redemption-mutation.ts
+@@ -65,6 +65,7 @@ export const useOrganizationCreditCodeRedemptionMutation = ({
+       await Promise.all([
+         queryClient.invalidateQueries({ queryKey: organizationKeys.customerProfile(slug) }),
+         queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgSubscription(slug) }),
++        queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgBalance(slug) }),
+       ])
+ 
+       await onSuccess?.(data, variables, context)
+diff --git a/apps/studio/data/subscriptions/keys.ts b/apps/studio/data/subscriptions/keys.ts
+index 956211a7a85f8..d751d390bf3d6 100644
+--- a/apps/studio/data/subscriptions/keys.ts
++++ b/apps/studio/data/subscriptions/keys.ts
+@@ -1,6 +1,7 @@
+ export const subscriptionKeys = {
+   orgSubscription: (orgSlug: string | undefined) =>
+     ['organizations', orgSlug, 'subscription'] as const,
++  orgBalance: (orgSlug: string | undefined) => ['organizations', orgSlug, 'balance'] as const,
+   orgPlans: (orgSlug: string | undefined) => ['organizations', orgSlug, 'plans'] as const,
+ 
+   addons: (projectRef: string | undefined) => ['projects', projectRef, 'addons'] as const,
+diff --git a/apps/studio/data/subscriptions/org-balance-query.ts b/apps/studio/data/subscriptions/org-balance-query.ts
+new file mode 100644
+index 0000000000000..af00ac0f39d0a
+--- /dev/null
++++ b/apps/studio/data/subscriptions/org-balance-query.ts
+@@ -0,0 +1,51 @@
++import { PermissionAction } from '@supabase/shared-types/out/constants'
++import { useQuery } from '@tanstack/react-query'
++
++import { subscriptionKeys } from './keys'
++import { get, handleError } from '@/data/fetchers'
++import { useAsyncCheckPermissions } from '@/hooks/misc/useCheckPermissions'
++import type { ResponseError, UseCustomQueryOptions } from '@/types'
++
++export type OrgBalanceVariables = {
++  orgSlug?: string
++}
++
++export async function getOrgBalance(
++  { orgSlug }: OrgBalanceVariables,
++  signal?: AbortSignal,
++  headers?: Record<string, string>
++) {
++  if (!orgSlug) throw new Error('orgSlug is required')
++
++  const { error, data } = await get('/platform/organizations/{slug}/billing/credits/balance', {
++    params: { path: { slug: orgSlug } },
++    signal,
++    headers,
++  })
++
++  if (error) handleError(error)
++  return data
++}
++
++export type OrgBalanceData = Awaited<ReturnType<typeof getOrgBalance>>
++export type OrgBalanceError = ResponseError
++
++export const useOrgBalanceQuery = <TData = OrgBalanceData>(
++  { orgSlug }: OrgBalanceVariables,
++  { enabled = true, ...options }: UseCustomQueryOptions<OrgBalanceData, OrgBalanceError, TData> = {}
++) => {
++  // [Joshen] Thinking it makes sense to add this check at the RQ level - prevent
++  // unnecessary requests, although this behaviour still needs handling on the UI
++  const { can: canReadBalance } = useAsyncCheckPermissions(
++    PermissionAction.BILLING_READ,
++    'stripe.subscriptions'
++  )
++
++  return useQuery<OrgBalanceData, OrgBalanceError, TData>({
++    queryKey: subscriptionKeys.orgBalance(orgSlug),
++    queryFn: ({ signal }) => getOrgBalance({ orgSlug }, signal),
++    enabled: enabled && canReadBalance && typeof orgSlug !== 'undefined',
++    staleTime: 60 * 60 * 1000,
++    ...options,
++  })
++}
+diff --git a/apps/studio/data/subscriptions/org-subscription-confirm-pending-change.ts b/apps/studio/data/subscriptions/org-subscription-confirm-pending-change.ts
+index 9f169808d907a..9b19099951c11 100644
+--- a/apps/studio/data/subscriptions/org-subscription-confirm-pending-change.ts
++++ b/apps/studio/data/subscriptions/org-subscription-confirm-pending-change.ts
+@@ -82,6 +82,7 @@ export const useConfirmPendingSubscriptionChangeMutation = ({
+ 
+       await Promise.all([
+         queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgSubscription(slug) }),
++        queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgBalance(slug) }),
+         queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgPlans(slug) }),
+         queryClient.invalidateQueries({ queryKey: usageKeys.orgUsage(slug) }),
+         queryClient.invalidateQueries({ queryKey: invoicesKeys.orgUpcomingPreview(slug) }),
+diff --git a/apps/studio/data/subscriptions/org-subscription-update-mutation.ts b/apps/studio/data/subscriptions/org-subscription-update-mutation.ts
+index c668c1bcd9888..d53727315fb72 100644
+--- a/apps/studio/data/subscriptions/org-subscription-update-mutation.ts
++++ b/apps/studio/data/subscriptions/org-subscription-update-mutation.ts
+@@ -78,6 +78,7 @@ export const useOrgSubscriptionUpdateMutation = ({
+         await Promise.all([
+           queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgSubscription(slug) }),
+           queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgPlans(slug) }),
++          queryClient.invalidateQueries({ queryKey: subscriptionKeys.orgBalance(slug) }),
+           queryClient.invalidateQueries({ queryKey: usageKeys.orgUsage(slug) }),
+           queryClient.invalidateQueries({ queryKey: invoicesKeys.orgUpcomingPreview(slug) }),
+           queryClient.invalidateQueries({ queryKey: organizationKeys.detail(slug) }),
+diff --git a/packages/api-types/types/platform.d.ts b/packages/api-types/types/platform.d.ts
+index c35f44e7d365d..24adc80761632 100644
+--- a/packages/api-types/types/platform.d.ts
++++ b/packages/api-types/types/platform.d.ts
+@@ -1077,6 +1077,23 @@ export interface paths {
+     patch?: never
+     trace?: never
+   }
++  '/platform/organizations/{slug}/billing/credits/balance': {
++    parameters: {
++      query?: never
++      header?: never
++      path?: never
++      cookie?: never
++    }
++    /** Gets the current credit balance */
++    get: operations['OrgCreditsController_getBalance']
++    put?: never
++    post?: never
++    delete?: never
++    options?: never
++    head?: never
++    patch?: never
++    trace?: never
++  }
+   '/platform/organizations/{slug}/billing/credits/preview': {
+     parameters: {
+       query?: never
+@@ -4693,7 +4710,32 @@ export interface components {
+       role_scoped_projects?: string[]
+     }
+     AuditLogsResponse: {
+-      result: unknown[]
++      result: {
++        action: {
++          metadata?: {
++            [key: string]: unknown
++          }
++          method: string
++          name: string
++          route: string
++          status: number
++        }
++        actor: {
++          app_id?: string
++          app_name?: string
++          email?: string
++          ip?: string
++          oauth_app_id?: string
++          oauth_app_name?: string
++          token_hash?: string
++          token_type: string
++          user_id?: string
++        }
++        organization_slug?: string
++        project_ref?: string
++        request_id: string
++        timestamp: number
++      }[]
+       retention_period: number
+     }
+     AuthBackupAdminLintResponse: {
+@@ -5419,6 +5461,10 @@ export interface components {
+         | '48xlarge_optimized_memory'
+         | '48xlarge_optimized_cpu'
+         | '48xlarge_high_memory'
++      /** @description GitHub App installation ID. Must be provided together with github_repository_id to connect a GitHub repository during project creation. */
++      github_installation_id?: number
++      /** @description GitHub repository ID. Must be provided together with github_installation_id to connect a GitHub repository during project creation. */
++      github_repository_id?: number
+       /** @description Whether to enable high availability for the project. */
+       high_availability?: boolean
+       name: string
+@@ -5562,6 +5608,68 @@ export interface components {
+               }
+             }
+           }
++        | {
++            ducklake: {
++              /**
++               * @description DuckLake catalog URL
++               * @example postgres://user:pass@localhost:5432/ducklake_catalog
++               */
++              catalog_url: string
++              /**
++               * @description DuckLake data path
++               * @example s3://<bucket-name>/
++               */
++              data_path: string
++              /**
++               * @description DuckLake snapshot retention interval (format: https://duckdb.org/docs/current/sql/data_types/interval)
++               * @example 7 days
++               */
++              expire_snapshots_older_than?: string
++              /**
++               * @description Schema used for DuckLake metadata tables stored in PostgreSQL
++               * @default ducklake
++               * @example ducklake
++               */
++              metadata_schema?: string
++              /**
++               * @description Number of concurrent DuckDB connections.
++               * @example 4
++               */
++              pool_size?: number
++              /**
++               * @description S3-compatible storage access key ID
++               * @example my-access-key
++               */
++              s3_access_key_id: string
++              /**
++               * @description S3-compatible storage endpoint
++               * @example 127.0.0.1:5000/s3
++               */
++              s3_endpoint: string
++              /**
++               * @description S3-compatible storage region
++               * @example us-east-1
++               */
++              s3_region: string
++              /**
++               * @description S3-compatible storage secret access key
++               * @example my-secret-key
++               */
++              s3_secret_access_key: string
++              /**
++               * @description S3 URL style: `path` (MinIO/Supabase) or `vhost` (AWS)
++               * @example path
++               * @enum {string}
++               */
++              s3_url_style?: 'path' | 'vhost'
++              /**
++               * @description Whether to use SSL for S3-compatible storage
++               * @default true
++               * @example false
++               */
++              s3_use_ssl?: boolean
++            }
++          }
+       /**
+        * @description Destination name
+        * @example bq-analytics
+@@ -5638,6 +5746,68 @@ export interface components {
+               }
+             }
+           }
++        | {
++            ducklake: {
++              /**
++               * @description DuckLake catalog URL
++               * @example postgres://user:pass@localhost:5432/ducklake_catalog
++               */
++              catalog_url: string
++              /**
++               * @description DuckLake data path
++               * @example s3://<bucket-name>/
++               */
++              data_path: string
++              /**
++               * @description DuckLake snapshot retention interval (format: https://duckdb.org/docs/current/sql/data_types/interval)
++               * @example 7 days
++               */
++              expire_snapshots_older_than?: string
++              /**
++               * @description Schema used for DuckLake metadata tables stored in PostgreSQL
++               * @default ducklake
++               * @example ducklake
++               */
++              metadata_schema?: string
++              /**
++               * @description Number of concurrent DuckDB connections.
++               * @example 4
++               */
++              pool_size?: number
++              /**
++               * @description S3-compatible storage access key ID
++               * @example my-access-key
++               */
++              s3_access_key_id: string
++              /**
++               * @description S3-compatible storage endpoint
++               * @example 127.0.0.1:5000/s3
++               */
++              s3_endpoint: string
++              /**
++               * @description S3-compatible storage region
++               * @example us-east-1
++               */
++              s3_region: string
++              /**
++               * @description S3-compatible storage secret access key
++               * @example my-secret-key
++               */
++              s3_secret_access_key: string
++              /**
++               * @description S3 URL style: `path` (MinIO/Supabase) or `vhost` (AWS)
++               * @example path
++               * @enum {string}
++               */
++              s3_url_style?: 'path' | 'vhost'
++              /**
++               * @description Whether to use SSL for S3-compatible storage
++               * @default true
++               * @example false
++               */
++              s3_use_ssl?: boolean
++            }
++          }
+       /**
+        * @description Destination name
+        * @example bq-analytics
+@@ -6018,6 +6188,10 @@ export interface components {
+       source: string
+       teamId?: string
+     }
++    CreditBalanceResponse: {
++      billing_via_partner: boolean
++      total_balance_cents: number
++    }
+     CreditRedemptionRequest: {
+       code: string
+     }
+@@ -8090,7 +8264,7 @@ export interface components {
+         has_address: boolean
+         id: string
+         is_default: boolean
+-        shared_payment_token: {
++        shared_payment_token?: {
+           expires_at: number | null
+           is_expired: boolean
+           last4: string
+@@ -9066,6 +9240,68 @@ export interface components {
+               }
+             }
+           }
++        | {
++            ducklake: {
++              /**
++               * @description DuckLake catalog URL
++               * @example postgres://user:pass@localhost:5432/ducklake_catalog
++               */
++              catalog_url: string
++              /**
++               * @description DuckLake data path
++               * @example s3://<bucket-name>/
++               */
++              data_path: string
++              /**
++               * @description DuckLake snapshot retention interval (format: https://duckdb.org/docs/current/sql/data_types/interval)
++               * @example 7 days
++               */
++              expire_snapshots_older_than?: string
++              /**
++               * @description Schema used for DuckLake metadata tables stored in PostgreSQL
++               * @default ducklake
++               * @example ducklake
++               */
++              metadata_schema?: string
++              /**
++               * @description Number of concurrent DuckDB connections.
++               * @example 4
++               */
++              pool_size?: number
++              /**
++               * @description S3-compatible storage access key ID
++               * @example my-access-key
++               */
++              s3_access_key_id: string
++              /**
++               * @description S3-compatible storage endpoint
++               * @example 127.0.0.1:5000/s3
++               */
++              s3_endpoint: string
++              /**
++               * @description S3-compatible storage region
++               * @example us-east-1
++               */
++              s3_region: string
++              /**
++               * @description S3-compatible storage secret access key
++               * @example my-secret-key
++               */
++              s3_secret_access_key: string
++              /**
++               * @description S3 URL style: `path` (MinIO/Supabase) or `vhost` (AWS)
++               * @example path
++               * @enum {string}
++               */
++              s3_url_style?: 'path' | 'vhost'
++              /**
++               * @description Whether to use SSL for S3-compatible storage
++               * @default true
++               * @example false
++               */
++              s3_use_ssl?: boolean
++            }
++          }
+       /**
+        * @description Destination id
+        * @example 2001
+@@ -9154,6 +9390,68 @@ export interface components {
+                 }
+               }
+             }
++          | {
++              ducklake: {
++                /**
++                 * @description DuckLake catalog URL
++                 * @example postgres://user:pass@localhost:5432/ducklake_catalog
++                 */
++                catalog_url: string
++                /**
++                 * @description DuckLake data path
++                 * @example s3://<bucket-name>/
++                 */
++                data_path: string
++                /**
++                 * @description DuckLake snapshot retention interval (format: https://duckdb.org/docs/current/sql/data_types/interval)
++                 * @example 7 days
++                 */
++                expire_snapshots_older_than?: string
++                /**
++                 * @description Schema used for DuckLake metadata tables stored in PostgreSQL
++                 * @default ducklake
++                 * @example ducklake
++                 */
++                metadata_schema?: string
++                /**
++                 * @description Number of concurrent DuckDB connections.
++                 * @example 4
++                 */
++                pool_size?: number
++                /**
++                 * @description S3-compatible storage access key ID
++                 * @example my-access-key
++                 */
++                s3_access_key_id: string
++                /**
++                 * @description S3-compatible storage endpoint
++                 * @example 127.0.0.1:5000/s3
++                 */
++                s3_endpoint: string
++                /**
++                 * @description S3-compatible storage region
++                 * @example us-east-1
++                 */
++                s3_region: string
++                /**
++                 * @description S3-compatible storage secret access key
++                 * @example my-secret-key
++                 */
++                s3_secret_access_key: string
++                /**
++                 * @description S3 URL style: `path` (MinIO/Supabase) or `vhost` (AWS)
++                 * @example path
++                 * @enum {string}
++                 */
++                s3_url_style?: 'path' | 'vhost'
++                /**
++                 * @description Whether to use SSL for S3-compatible storage
++                 * @default true
++                 * @example false
++                 */
++                s3_use_ssl?: boolean
++              }
++            }
+         /**
+          * @description Destination id
+          * @example 2001
+@@ -9812,7 +10110,7 @@ export interface components {
+     SignedUrlsResponse: {
+       error: string | null
+       path: string | null
+-      signedUrl: string
++      signedUrl: string | null
+     }
+     SignUpBody: {
+       /** Format: email */
+@@ -10941,6 +11239,68 @@ export interface components {
+               }
+             }
+           }
++        | {
++            ducklake: {
++              /**
++               * @description DuckLake catalog URL
++               * @example postgres://user:pass@localhost:5432/ducklake_catalog
++               */
++              catalog_url: string
++              /**
++               * @description DuckLake data path
++               * @example s3://<bucket-name>/
++               */
++              data_path: string
++              /**
++               * @description DuckLake snapshot retention interval (format: https://duckdb.org/docs/current/sql/data_types/interval)
++               * @example 7 days
++               */
++              expire_snapshots_older_than?: string
++              /**
++               * @description Schema used for DuckLake metadata tables stored in PostgreSQL
++               * @default ducklake
++               * @example ducklake
++               */
++              metadata_schema?: string
++              /**
++               * @description Number of concurrent DuckDB connections.
++               * @example 4
++               */
++              pool_size?: number
++              /**
++               * @description S3-compatible storage access key ID
++               * @example my-access-key
++               */
++              s3_access_key_id: string
++              /**
++               * @description S3-compatible storage endpoint
++               * @example 127.0.0.1:5000/s3
++               */
++              s3_endpoint: string
++              /**
++               * @description S3-compatible storage region
++               * @example us-east-1
++               */
++              s3_region: string
++              /**
++               * @description S3-compatible storage secret access key
++               * @example my-secret-key
++               */
++              s3_secret_access_key: string
++              /**
++               * @description S3 URL style: `path` (MinIO/Supabase) or `vhost` (AWS)
++               * @example path
++               * @enum {string}
++               */
++              s3_url_style?: 'path' | 'vhost'
++              /**
++               * @description Whether to use SSL for S3-compatible storage
++               * @default true
++               * @example false
++               */
++              s3_use_ssl?: boolean
++            }
++          }
+       /**
+        * @description Destination name
+        * @example bq-analytics
+@@ -11017,6 +11377,68 @@ export interface components {
+               }
+             }
+           }
++        | {
++            ducklake: {
++              /**
++               * @description DuckLake catalog URL
++               * @example postgres://user:pass@localhost:5432/ducklake_catalog
++               */
++              catalog_url: string
++              /**
++               * @description DuckLake data path
++               * @example s3://<bucket-name>/
++               */
++              data_path: string
++              /**
++               * @description DuckLake snapshot retention interval (format: https://duckdb.org/docs/current/sql/data_types/interval)
++               * @example 7 days
++               */
++              expire_snapshots_older_than?: string
++              /**
++               * @description Schema used for DuckLake metadata tables stored in PostgreSQL
++               * @default ducklake
++               * @example ducklake
++               */
++              metadata_schema?: string
++              /**
++               * @description Number of concurrent DuckDB connections.
++               * @example 4
++               */
++              pool_size?: number
++              /**
++               * @description S3-compatible storage access key ID
++               * @example my-access-key
++               */
++              s3_access_key_id: string
++              /**
++               * @description S3-compatible storage endpoint
++               * @example 127.0.0.1:5000/s3
++               */
++              s3_endpoint: string
++              /**
++               * @description S3-compatible storage region
++               * @example us-east-1
++               */
++              s3_region: string
++              /**
++               * @description S3-compatible storage secret access key
++               * @example my-secret-key
++               */
++              s3_secret_access_key: string
++              /**
++               * @description S3 URL style: `path` (MinIO/Supabase) or `vhost` (AWS)
++               * @example path
++               * @enum {string}
++               */
++              s3_url_style?: 'path' | 'vhost'
++              /**
++               * @description Whether to use SSL for S3-compatible storage
++               * @default true
++               * @example false
++               */
++              s3_use_ssl?: boolean
++            }
++          }
+       /**
+        * @description Destination name
+        * @example bq-analytics
+@@ -11321,7 +11743,32 @@ export interface components {
+       visibility: 'user' | 'project' | 'org' | 'public'
+     }
+     UserAuditLogsResponse: {
+-      result: unknown[]
++      result: {
++        action: {
++          metadata?: {
++            [key: string]: unknown
++          }
++          method: string
++          name: string
++          route: string
++          status: number
++        }
++        actor: {
++          app_id?: string
++          app_name?: string
++          email?: string
++          ip?: string
++          oauth_app_id?: string
++          oauth_app_name?: string
++          token_hash?: string
++          token_type: string
++          user_id?: string
++        }
++        organization_slug?: string
++        project_ref?: string
++        request_id: string
++        timestamp: number
++      }[]
+       retention_period: number
+     }
+     UserBody: {
+@@ -11479,6 +11926,68 @@ export interface components {
+               }
+             }
+           }
++        | {
++            ducklake: {
++              /**
++               * @description DuckLake catalog URL
++               * @example postgres://user:pass@localhost:5432/ducklake_catalog
++               */
++              catalog_url: string
++              /**
++               * @description DuckLake data path
++               * @example s3://<bucket-name>/
++               */
++              data_path: string
++              /**
++               * @description DuckLake snapshot retention interval (format: https://duckdb.org/docs/current/sql/data_types/interval)
++               * @example 7 days
++               */
++              expire_snapshots_older_than?: string
++              /**
++               * @description Schema used for DuckLake metadata tables stored in PostgreSQL
++               * @default ducklake
++               * @example ducklake
++               */
++              metadata_schema?: string
++              /**
++               * @description Number of concurrent DuckDB connections.
++               * @example 4
++               */
++              pool_size?: number
++              /**
++               * @description S3-compatible storage access key ID
++               * @example my-access-key
++               */
++              s3_access_key_id: string
++              /**
++               * @description S3-compatible storage endpoint
++               * @example 127.0.0.1:5000/s3
++               */
++              s3_endpoint: string
++              /**
++               * @description S3-compatible storage region
++               * @example us-east-1
++               */
++              s3_region: string
++              /**
++               * @description S3-compatible storage secret access key
++               * @example my-secret-key
++               */
++              s3_secret_access_key: string
++              /**
++               * @description S3 URL style: `path` (MinIO/Supabase) or `vhost` (AWS)
++               * @example path
++               * @enum {string}
++               */
++              s3_url_style?: 'path' | 'vhost'
++              /**
++               * @description Whether to use SSL for S3-compatible storage
++               * @default true
++               * @example false
++               */
++              s3_use_ssl?: boolean
++            }
++          }
+     }
+     ValidateReplicationPipelineBody: {
+       /** @description Pipeline configuration */
+@@ -14694,6 +15203,7 @@ export interface operations {
+   OrgAuditLogsController_getAuditLogs: {
+     parameters: {
+       query: {
++        format?: 'legacy' | 'v2'
+         /** @description End timestamp */
+         iso_timestamp_end: string
+         /** @description Start timestamp */
+@@ -14800,6 +15310,49 @@ export interface operations {
+       }
+     }
+   }
++  OrgCreditsController_getBalance: {
++    parameters: {
++      query?: never
++      header?: never
++      path: {
++        /** @description Organization slug */
++        slug: string
++      }
++      cookie?: never
++    }
++    requestBody?: never
++    responses: {
++      200: {
++        headers: {
++          [name: string]: unknown
++        }
++        content: {
++          'application/json': components['schemas']['CreditBalanceResponse']
++        }
++      }
++      /** @description Unauthorized */
++      401: {
++        headers: {
++          [name: string]: unknown
++        }
++        content?: never
++      }
++      /** @description Forbidden action */
++      403: {
++        headers: {
++          [name: string]: unknown
++        }
++        content?: never
++      }
++      /** @description Rate limit exceeded */
++      429: {
++        headers: {
++          [name: string]: unknown
++        }
++        content?: never
++      }
++    }
++  }
+   OrgCreditsController_previewTopUp: {
+     parameters: {
+       query?: never
+@@ -18873,6 +19426,7 @@ export interface operations {
+   UserAuditLogsController_getAuditLogs: {
+     parameters: {
+       query: {
++        format?: 'legacy' | 'v2'
+         /** @description End timestamp */
+         iso_timestamp_end: string
+         /** @description Start timestamp */

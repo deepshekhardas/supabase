@@ -1,5 +1,7 @@
 import { PermissionAction } from '@supabase/shared-types/out/constants'
 import { useParams } from 'common'
+import { useInView } from 'react-intersection-observer'
+
 import {
   ScaffoldSection,
   ScaffoldSectionContent,
@@ -9,7 +11,7 @@ import AlertError from 'components/ui/AlertError'
 import { FormPanel } from 'components/ui/Forms/FormPanel'
 import { FormSection, FormSectionContent } from 'components/ui/Forms/FormSection'
 import NoPermission from 'components/ui/NoPermission'
-import { useOrgSubscriptionQuery } from 'data/subscriptions/org-subscription-query'
+import { useOrgBalanceQuery } from 'data/subscriptions/org-balance-query'
 import { useAsyncCheckPermissions } from 'hooks/misc/useCheckPermissions'
 
 import { CreditCodeRedemption } from './CreditCodeRedemption'
@@ -23,24 +25,24 @@ const CreditBalance = () => {
     'stripe.subscriptions'
   )
 
-  const {
-    data: subscription,
-    error,
-    isPending: isLoading,
-    isError,
-    isSuccess,
-  } = useOrgSubscriptionQuery({ orgSlug: slug }, { enabled: canReadSubscriptions })
+  const { ref, inView } = useInView({ triggerOnce: true })
 
-  const customerBalance = (subscription?.customer_balance ?? 0) / 100
-  const isCredit = customerBalance < 0
-  const isDebt = customerBalance > 0
-  const balance =
-    isCredit && customerBalance !== 0
-      ? customerBalance.toFixed(2).toString().replace('-', '')
-      : customerBalance.toFixed(2)
+  const {
+    data: balanceData,
+    error: balanceError,
+    isPending: isBalanceLoading,
+    isError: isBalanceError,
+    isSuccess: isBalanceSuccess,
+  } = useOrgBalanceQuery({ orgSlug: slug }, { enabled: canReadSubscriptions && inView })
+
+  const combinedCreditBalanceCents = balanceData?.total_balance_cents ?? 0
+  const combinedCreditBalance = combinedCreditBalanceCents / 100
+  const hasCredits = combinedCreditBalanceCents > 0
+  const hasDebt = combinedCreditBalanceCents < 0
+  const balance = Math.abs(combinedCreditBalance).toFixed(2)
 
   return (
-    <ScaffoldSection>
+    <ScaffoldSection ref={ref}>
       <ScaffoldSectionDetail>
         <div className="sticky space-y-2 top-12 pr-3">
           <div className="flex items-center space-x-2">
@@ -58,7 +60,7 @@ const CreditBalance = () => {
         ) : (
           <FormPanel
             footer={
-              subscription?.billing_via_partner ? undefined : (
+              balanceData?.billing_via_partner ? undefined : (
                 <div className="flex justify-end items-center py-4 px-8 gap-x-2">
                   <CreditCodeRedemption slug={slug} />
                   <CreditTopUp slug={slug} />
@@ -67,22 +69,22 @@ const CreditBalance = () => {
             }
           >
             <FormSection>
-              <FormSectionContent fullWidth loading={isLoading}>
-                {isError && (
+              <FormSectionContent fullWidth loading={isBalanceLoading}>
+                {isBalanceError && (
                   <AlertError
                     subject="Failed to retrieve organization customer profile"
-                    error={error}
+                    error={balanceError}
                   />
                 )}
 
-                {isSuccess && (
+                {isBalanceSuccess && (
                   <div className="flex w-full justify-between items-center">
                     <span>Balance</span>
                     <div className="flex items-center space-x-1">
-                      {isDebt && <h4 className="opacity-50">-</h4>}
+                      {hasDebt && <h4 className="opacity-50">-</h4>}
                       <h4 className="opacity-50">$</h4>
                       <h1 className="relative">{balance}</h1>
-                      {isCredit && <h4 className="opacity-50">/credits</h4>}
+                      {hasCredits && <h4 className="opacity-50">/credits</h4>}
                     </div>
                   </div>
                 )}
